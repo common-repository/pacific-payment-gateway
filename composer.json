@@ -1,0 +1,35 @@
+{
+    "name": "pacific/gateway-wordpress",
+    "description": "The plugin offers access to payments via the pacific.org gateway.",
+    "type": "library",
+    "minimum-stability": "stable",
+    "autoload": {
+        "psr-4": {
+            "Pacific\\GatewayWordpress\\App\\": "src/app/",
+            "Pacific\\GatewayWordpress\\Kernel\\": "src/kernel/"
+        }
+    },
+    "authors": [
+        {
+            "name": "InterSynergy",
+            "homepage": "https://www.intersynergy.pl/"
+        }
+    ],
+    "config": {
+        "optimize-autoloader": true
+    },
+    "repositories": [
+        {
+            "url": "https://gitlab.com/pacific-plugin/pacific-plugin-core-backend.git",
+            "type": "git"
+        }
+    ],
+    "require": {
+        "php": "^7.1 || ^8.0",
+        "pacific/core": "^1.1",
+        "symfony/intl": "^4.4"
+    },
+    "require-dev": {
+        "symfony/var-dumper": "^4.4"
+    }
+}

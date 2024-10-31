@@ -1,0 +1,132 @@
+
+stages:
+  - build
+  - packing
+  - deploy
+
+build-php:
+  stage: build
+  only:
+    - tags
+    - web
+#    - main
+  image: php:7.1-cli
+  before_script:
+    - php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+    - php composer-setup.php
+    - php -r "unlink('composer-setup.php');"
+    - mv composer.phar /usr/local/bin/composer
+    - apt-get update
+    - apt-get install git zip -y
+    - composer config --global http-basic.gitlab.com "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD"
+  script:
+    - composer clear-cache
+    - composer install --no-dev --optimize-autoloader --no-cache --prefer-dist
+    - echo "Compile complete."
+  artifacts:
+    paths:
+      - ./src/
+      - ./vendor/
+      - ./pacific-gateway.php
+      - ./config.php
+      - ./templates
+    expire_in: 45 minutes
+
+build-node:
+  stage: build
+  only:
+    - tags
+    - web
+#    - main
+  image: node:16.13
+  before_script:
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/".insteadOf https://gitlab.com/
+  script:
+    - npm install
+    - npm run production
+    - echo "Compile complete."
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/public/
+    expire_in: 45 minutes
+
+prepare_zip:
+  stage: packing
+  only:
+#    - tags
+    - web
+    - main
+  script:
+    - rm -fr .git/
+    - rm -fr vendor/pacific/core/.git/
+    - rm .gitignore
+    - rm .gitlab-ci.yml
+#    - rm composer.json
+    - rm composer.lock
+    - rm README.md
+    - rm -fr node_modules/
+    - rm package.json
+    - rm package-lock.json
+    - rm webpack.config.js
+    - rm -fr resources/
+    - rm DEPLOY.md
+    - echo "Cleaning complete."
+  needs: ["build-php", "build-node"]
+  artifacts:
+    name: "pacific-payment-gateway:$CI_COMMIT_REF_NAME"
+    paths:
+      - $CI_PROJECT_DIR/
+    expire_in: 60 minutes
+
+prepare_svn:
+  stage: deploy
+  needs: ["prepare_zip"]
+  dependencies:
+    - prepare_zip
+  only:
+    - $RELEASE == "production"
+    - web
+    - main
+  before_script:
+    - apt-get update
+    - apt-get install subversion rsync -y
+    - ls -ah
+    - echo "end ls"
+#    - svn co https://plugins.svn.wordpress.org/pacific-payment-gateway --username "$CI_SVN_LOGIN" --password "$CI_SVN_PASSWORD"
+    - svn co https://plugins.svn.wordpress.org/pacific-payment-gateway svn
+    - cd svn
+    - ls -lah
+    - cd ..
+  script:
+    - ls -lah
+    - cp -R assets/ svn
+    - cd svn
+    - svn up
+    - cd ..
+    - rsync -av -r --progress . svn/trunk --exclude svn/ --exclude assets/
+    - cd svn
+#    - svn add trunk/*
+    - svn add --force * --auto-props --parents --depth infinity -q
+    - svn stat
+    - mkdir -p tags/$PLUGIN_VERSION
+    - echo Submit version to trunk
+    - svn ci -m "copy production version to trunk $PLUGIN_VERSION" --no-auth-cache --username "$CI_SVN_LOGIN" --password "$CI_SVN_PASSWORD"
+  artifacts:
+    paths:
+      - ./
+    expire_in: 60 minutes
+
+upload_to_marketplace:
+  stage: deploy
+  needs: ["prepare_svn"]
+  rules:
+    - if: $PLUGIN_VERSION
+  script:
+    - echo "Uploading to marketplace."
+    - svn cp trunk tags/$PLUGIN_VERSION
+    - svn ci -m "Update $PLUGIN_VERSION" --username "$CI_SVN_LOGIN" --password "$CI_SVN_PASSWORD"
+    - svn stat
+  artifacts:
+    paths:
+      - ./
+    expire_in: 60 minutes
